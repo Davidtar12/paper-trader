@@ -8,6 +8,7 @@ on:
     - cron: "0  11 * * 1-5"   # 11:00 — XAUUSD pre-NY
     - cron: "35 14 * * 1-5"   # 14:35 — NYOpen (5 min after range closes)
     - cron: "30 15 * * 1-5"   # 15:30 — NYOpen backup check
+    - cron: "0  21 * * 1-5"   # 21:00 — daily outcome resolver (after NY close)
   workflow_dispatch:           # allow manual run from GitHub UI
 
 jobs:
@@ -32,6 +33,11 @@ jobs:
         env:
           TWELVE_DATA_API_KEY: ${{ secrets.TWELVE_DATA_API_KEY }}
         run: python signal_logger.py
+
+      - name: Resolve open trade outcomes
+        env:
+          TWELVE_DATA_API_KEY: ${{ secrets.TWELVE_DATA_API_KEY }}
+        run: python resolve_outcomes.py
 
       - name: Commit if new signals
         run: |
