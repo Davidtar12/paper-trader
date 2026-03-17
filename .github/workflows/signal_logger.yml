@@ -1,0 +1,42 @@
+name: Signal Logger
+
+on:
+  schedule:
+    # 5 checks per weekday (UTC) — covers XAUUSD London open + NY open window
+    - cron: "15 7  * * 1-5"   # 07:15 — XAUUSD London open
+    - cron: "0  9  * * 1-5"   # 09:00 — XAUUSD mid-London
+    - cron: "0  11 * * 1-5"   # 11:00 — XAUUSD pre-NY
+    - cron: "35 14 * * 1-5"   # 14:35 — NYOpen (5 min after range closes)
+    - cron: "30 15 * * 1-5"   # 15:30 — NYOpen backup check
+  workflow_dispatch:           # allow manual run from GitHub UI
+
+jobs:
+  signal-check:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Run signal logger
+        env:
+          TWELVE_DATA_API_KEY: ${{ secrets.TWELVE_DATA_API_KEY }}
+        run: python signal_logger.py
+
+      - name: Commit if new signals
+        run: |
+          git config user.name  "Signal Logger Bot"
+          git config user.email "bot@github.com"
+          git add paper_trades.csv
+          git diff --cached --quiet || git commit -m "signals: $(date -u '+%Y-%m-%d %H:%M UTC')"
+          git push
