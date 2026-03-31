@@ -61,7 +61,7 @@ def fetch_ohlcv(symbol: str, interval: str, outputsize: int = 500) -> pd.DataFra
 
 def resolve_trade(row: dict, df: pd.DataFrame) -> str | None:
     """Return 'WIN', 'LOSS', or None if not yet resolved."""
-    entry_dt = datetime.fromisoformat(f"{row['date']} {row['time_utc']}").replace(tzinfo=timezone.utc)
+    entry_dt = datetime.fromisoformat(f"{row['date']} {row['time_utc']}")
     tp = float(row["tp_price"])
     sl = float(row["sl_price"])
     direction = row["direction"]
