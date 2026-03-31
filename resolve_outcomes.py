@@ -107,7 +107,7 @@ def main() -> int:
         if instrument not in cache:
             interval = INSTRUMENT_INTERVAL.get(instrument, "15min")
             try:
-                cache[instrument] = fetch_ohlcv(instrument, interval, 500)
+                cache[instrument] = fetch_ohlcv(instrument, interval, 5000)
             except Exception as exc:
                 log.error(f"Fetch failed for {instrument}: {exc}")
                 continue
