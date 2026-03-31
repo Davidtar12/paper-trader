@@ -258,6 +258,7 @@ def main() -> int:
                 new_sigs += 1
         except Exception as exc:
             log.error(f"XAUUSD error: {exc}")
+            raise
     else:
         log.info("XAUUSD: already signaled today")
 
@@ -278,6 +279,7 @@ def main() -> int:
                 new_sigs += 1
         except Exception as exc:
             log.error(f"NYOpen error: {exc}")
+            raise
     else:
         log.info("NYOpen: already signaled today")
 
