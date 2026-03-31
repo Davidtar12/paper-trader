@@ -113,8 +113,8 @@ def check_nyopen(df: pd.DataFrame) -> dict | None:
         return None
 
     today = now.date()
-    range_start = datetime(today.year, today.month, today.day, 14, 0, tzinfo=timezone.utc)
-    range_end   = datetime(today.year, today.month, today.day, 14, 30, tzinfo=timezone.utc)
+    range_start = datetime(today.year, today.month, today.day, 14, 0)
+    range_end   = datetime(today.year, today.month, today.day, 14, 30)
     range_bars  = df[(df.index >= range_start) & (df.index < range_end)]
 
     if len(range_bars) < 1:
