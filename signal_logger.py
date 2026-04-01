@@ -131,11 +131,11 @@ def check_nyopen(df: pd.DataFrame) -> dict | None:
     sl, tp = 3.0, 6.0
 
     if price > hi:
-        return dict(direction="BUY",  entry=round(price, 2),
-                    sl=round(price - sl, 2), tp=round(price + tp, 2))
+        return dict(direction="BUY",  entry_price=round(price, 2),
+                    sl_price=round(price - sl, 2), tp_price=round(price + tp, 2))
     if price < lo:
-        return dict(direction="SELL", entry=round(price, 2),
-                    sl=round(price + sl, 2), tp=round(price - tp, 2))
+        return dict(direction="SELL", entry_price=round(price, 2),
+                    sl_price=round(price + sl, 2), tp_price=round(price - tp, 2))
 
     log.info(f"NYOpen: price {price:.2f} inside range [{lo:.2f}, {hi:.2f}]")
     return None
@@ -194,8 +194,8 @@ def check_xauusd(df: pd.DataFrame) -> dict | None:
                 continue
             if df["close"].iloc[i] > pb_hi:
                 p, a = df["close"].iloc[i], atr.iloc[i]
-                return dict(direction="BUY", entry=round(p, 2),
-                            sl=round(p - 2.5 * a, 2), tp=round(p + 12.0 * a, 2))
+                return dict(direction="BUY", entry_price=round(p, 2),
+                            sl_price=round(p - 2.5 * a, 2), tp_price=round(p + 12.0 * a, 2))
 
         # SHORT: fast < mid < slow
         elif ef < em < es:
@@ -223,8 +223,8 @@ def check_xauusd(df: pd.DataFrame) -> dict | None:
                 continue
             if df["close"].iloc[i] < pb_lo:
                 p, a = df["close"].iloc[i], atr.iloc[i]
-                return dict(direction="SELL", entry=round(p, 2),
-                            sl=round(p + 2.5 * a, 2), tp=round(p - 12.0 * a, 2))
+                return dict(direction="SELL", entry_price=round(p, 2),
+                            sl_price=round(p + 2.5 * a, 2), tp_price=round(p - 12.0 * a, 2))
 
     log.info("XAUUSD: no setup found in lookback window")
     return None
@@ -252,7 +252,10 @@ def main() -> int:
                     time_utc=now.strftime("%H:%M"),
                     strategy="XAUUSD_EmaPullback",
                     instrument="XAU/USD",
-                    **sig,
+                    direction=sig["direction"],
+                    entry_price=sig["entry_price"],
+                    sl_price=sig["sl_price"],
+                    tp_price=sig["tp_price"],
                     status="OPEN", outcome="", notes="",
                 ))
                 new_sigs += 1
@@ -273,7 +276,10 @@ def main() -> int:
                     time_utc=now.strftime("%H:%M"),
                     strategy="NYOpen_US500",
                     instrument="SPY",
-                    **sig,
+                    direction=sig["direction"],
+                    entry_price=sig["entry_price"],
+                    sl_price=sig["sl_price"],
+                    tp_price=sig["tp_price"],
                     status="OPEN", outcome="", notes="",
                 ))
                 new_sigs += 1
