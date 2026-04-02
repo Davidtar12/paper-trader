@@ -1,1 +1,2 @@
 date,time_utc,strategy,instrument,direction,entry_price,sl_price,tp_price,status,outcome,notes
+2026-04-02,14:56,NYOpen_US500,SPY,BUY,655.34,652.34,661.34,OPEN,,
