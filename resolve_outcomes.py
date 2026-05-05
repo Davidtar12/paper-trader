@@ -158,6 +158,48 @@ def resolve_trade(row: dict, df: pd.DataFrame) -> dict | None:
     return None  # not enough bars yet to time-stop
 
 
+def backfill_legacy(rows: list) -> int:
+    """Patch CLOSED rows that have outcome but no exit_reason/r_realized.
+
+    These come from an older version of the resolver that only wrote
+    status+outcome.  We cannot recover the exact exit bar, so we use the
+    canonical price (TP for WIN, SL for LOSS) and mark the source as
+    estimated so it is visually distinct in the CSV.
+    """
+    patched = 0
+    for row in rows:
+        if row.get("status") != "CLOSED":
+            continue
+        if row.get("exit_reason"):          # already resolved
+            continue
+        outcome   = row.get("outcome", "")
+        direction = row.get("direction", "BUY")
+        try:
+            entry = float(row["entry_price"])
+            sl    = float(row["sl_price"])
+            tp    = float(row["tp_price"])
+        except (KeyError, ValueError):
+            continue
+        if outcome == "WIN":
+            exit_px     = tp
+            exit_reason = "TP_EST"
+        elif outcome == "LOSS":
+            exit_px     = sl
+            exit_reason = "SL_EST"
+        else:
+            continue
+        row["exit_price"]    = round(exit_px, 4)
+        row["exit_reason"]   = exit_reason
+        row["r_realized"]    = _r_realized(direction, entry, exit_px, sl)
+        row["exit_time_utc"] = ""   # truly unknown; leave blank
+        if not row.get("notes"):
+            row["notes"] = "legacy_backfill"
+        patched += 1
+    if patched:
+        log.info(f"Backfilled exit details for {patched} legacy CLOSED row(s).")
+    return patched
+
+
 def main() -> int:
     if not CSV_PATH.exists():
         log.info("No paper_trades.csv yet")
@@ -166,8 +208,16 @@ def main() -> int:
     with open(CSV_PATH, newline="") as f:
         rows = list(csv.DictReader(f))
 
+    legacy_patched = backfill_legacy(rows)
+
     open_rows = [r for r in rows if r["status"] == "OPEN"]
     if not open_rows:
+        if legacy_patched:
+            # Still need to persist the backfill changes.
+            with open(CSV_PATH, "w", newline="") as f:
+                writer = csv.DictWriter(f, fieldnames=CSV_HEADERS, extrasaction="ignore")
+                writer.writeheader()
+                writer.writerows(_normalize_row(r) for r in rows)
         log.info("No open trades to resolve")
         return 0
 
