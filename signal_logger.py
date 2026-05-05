@@ -6,8 +6,12 @@ Fetches live OHLCV data from Twelve Data and checks two strategies for entry sig
 Logs new signals to paper_trades.csv (one entry per strategy per day max).
 
 Strategies:
-  NYOpen_US500      -- SPY M30, NY Opening Range Breakout (14:00-14:30 UTC range)
+  NYOpen_US500       -- SPY M30, NY Opening Range Breakout (14:00-14:30 UTC range)
   XAUUSD_EmaPullback -- XAU/USD M15, EMA(3/14/24) crossover + pullback breakout
+
+Both strategies are gated by a regime filter:
+  - ADX(14) > ADX_THRESHOLD AND ADX rising over the last 3 bars
+  - SMA50 slope over 10 bars > +SLOPE_THRESHOLD (BUY) or < -SLOPE_THRESHOLD (SELL)
 """
 
 import csv
@@ -31,8 +35,22 @@ API_KEY = os.environ["TWELVE_DATA_API_KEY"]
 CSV_PATH = Path(__file__).parent / "paper_trades.csv"
 CSV_HEADERS = [
     "date", "time_utc", "strategy", "instrument", "direction",
-    "entry_price", "sl_price", "tp_price", "status", "outcome", "notes",
+    "entry_price", "sl_price", "tp_price",
+    "entry_atr", "entry_adx", "entry_slope",
+    "status", "outcome",
+    "exit_price", "exit_time_utc", "exit_reason", "r_realized",
+    "notes",
 ]
+
+# ---- Regime filter parameters --------------------------------------------
+ADX_THRESHOLD    = 25.0     # min ADX(14) to call it a trend
+ADX_LOOKBACK     = 3        # bars used to confirm "rising"
+SLOPE_THRESHOLD  = 0.0015   # min |SMA50 slope over 10 bars| (0.15%)
+SLOPE_LOOKBACK   = 10
+SMA_PERIOD       = 50
+
+# ---- NYOpen parameters ---------------------------------------------------
+NYOPEN_MIN_RANGE_ATR = 0.5  # opening range must be at least 0.5 * ATR(14)
 
 
 # ---------------------------------------------------------------------------
@@ -78,86 +96,156 @@ def already_today(rows: list, strategy: str) -> bool:
     return any(r["date"] == today and r["strategy"] == strategy for r in rows)
 
 
+def _normalize_row(row: dict) -> dict:
+    """Ensure every header key exists; missing -> empty string."""
+    return {k: row.get(k, "") for k in CSV_HEADERS}
+
+
 def append_and_save(rows: list, row: dict):
     rows.append(row)
     with open(CSV_PATH, "w", newline="") as f:
-        writer = csv.DictWriter(f, fieldnames=CSV_HEADERS)
+        writer = csv.DictWriter(f, fieldnames=CSV_HEADERS, extrasaction="ignore")
         writer.writeheader()
-        writer.writerows(rows)
+        writer.writerows(_normalize_row(r) for r in rows)
     log.info(f"SIGNAL: {row['strategy']} {row['direction']} {row['instrument']} "
              f"@ {row['entry_price']}  SL={row['sl_price']}  TP={row['tp_price']}")
 
 
 # ---------------------------------------------------------------------------
-# ATR
+# Indicators
 # ---------------------------------------------------------------------------
 
 def calc_atr(df: pd.DataFrame, period: int = 14) -> pd.Series:
     h, l, c = df["high"], df["low"], df["close"]
     pc = c.shift(1)
     tr = pd.concat([(h - l), (h - pc).abs(), (l - pc).abs()], axis=1).max(axis=1)
-    return tr.ewm(span=period, adjust=False).mean()
+    return tr.ewm(alpha=1 / period, adjust=False).mean()
+
+
+def calc_adx(df: pd.DataFrame, period: int = 14) -> pd.Series:
+    h, l, c = df["high"], df["low"], df["close"]
+    pc = c.shift(1)
+    tr = pd.concat([(h - l), (h - pc).abs(), (l - pc).abs()], axis=1).max(axis=1)
+    up = h - h.shift(1)
+    dn = l.shift(1) - l
+    plus_dm  = ((up > dn) & (up > 0)).astype(float) * up
+    minus_dm = ((dn > up) & (dn > 0)).astype(float) * dn
+    atr_w = tr.ewm(alpha=1 / period, adjust=False).mean()
+    plus_di  = 100 * plus_dm.ewm(alpha=1 / period, adjust=False).mean() / atr_w
+    minus_di = 100 * minus_dm.ewm(alpha=1 / period, adjust=False).mean() / atr_w
+    denom = (plus_di + minus_di).replace(0, pd.NA)
+    dx = 100 * (plus_di - minus_di).abs() / denom
+    return dx.ewm(alpha=1 / period, adjust=False).mean()
+
+
+def regime_context(df: pd.DataFrame) -> dict:
+    """Return ADX, ADX a few bars ago, and SMA50 slope at the latest bar."""
+    if len(df) < SMA_PERIOD + SLOPE_LOOKBACK + 5:
+        return {"adx": None, "adx_prev": None, "slope": None}
+    adx = calc_adx(df, 14)
+    sma = df["close"].rolling(SMA_PERIOD).mean()
+    slope = (sma - sma.shift(SLOPE_LOOKBACK)) / sma.shift(SLOPE_LOOKBACK)
+    a      = adx.iloc[-1]
+    a_prev = adx.iloc[-1 - ADX_LOOKBACK]
+    s      = slope.iloc[-1]
+    return {
+        "adx":      None if pd.isna(a)      else float(a),
+        "adx_prev": None if pd.isna(a_prev) else float(a_prev),
+        "slope":    None if pd.isna(s)      else float(s),
+    }
+
+
+def regime_ok(ctx: dict, direction: str) -> bool:
+    a, a_prev, s = ctx["adx"], ctx["adx_prev"], ctx["slope"]
+    if a is None or a_prev is None or s is None:
+        return False
+    if not (a > ADX_THRESHOLD and a > a_prev):
+        return False
+    if direction == "BUY":
+        return s > SLOPE_THRESHOLD
+    return s < -SLOPE_THRESHOLD
+
+
+def _ctx_to_row_fields(ctx: dict) -> dict:
+    return {
+        "entry_adx":   "" if ctx.get("adx")   is None else round(ctx["adx"], 2),
+        "entry_slope": "" if ctx.get("slope") is None else round(ctx["slope"], 5),
+    }
 
 
 # ---------------------------------------------------------------------------
 # NYOpen_US500  (SPY M30)
 # Range 14:00-14:30 UTC | Trade 14:30-16:00 UTC
-# SL=3.0 SPY pts (=30 SPX pts), TP=6.0 SPY pts (=60 SPX pts)
+# Stop = 1.5 * ATR(14)   |   Target = 3.0 * ATR(14)   (~1:2 R)
 # ---------------------------------------------------------------------------
 
-def check_nyopen(df: pd.DataFrame) -> dict | None:
+def check_nyopen(df: pd.DataFrame) -> tuple[dict | None, dict]:
+    ctx = regime_context(df)
     now = datetime.now(timezone.utc)
     hm = now.hour * 60 + now.minute
     if not (14 * 60 + 30 <= hm < 16 * 60):
         log.info("NYOpen: outside trade window 14:30-16:00 UTC")
-        return None
+        return None, ctx
 
     today = now.date()
     range_start = datetime(today.year, today.month, today.day, 14, 0)
     range_end   = datetime(today.year, today.month, today.day, 14, 30)
     range_bars  = df[(df.index >= range_start) & (df.index < range_end)]
-
     if len(range_bars) < 1:
         log.info("NYOpen: no range bars for today yet")
-        return None
+        return None, ctx
+
+    atr = calc_atr(df, 14).iloc[-1]
+    if pd.isna(atr) or atr <= 0:
+        log.info("NYOpen: ATR not ready")
+        return None, ctx
 
     hi = range_bars["high"].max()
     lo = range_bars["low"].min()
-    if (hi - lo) < 1.0:   # 1 SPY pt ~ 10 SPX pts
-        log.info(f"NYOpen: range {hi - lo:.2f} pts too small")
-        return None
+    rng = hi - lo
+    if rng < NYOPEN_MIN_RANGE_ATR * atr:
+        log.info(f"NYOpen: range {rng:.2f} < {NYOPEN_MIN_RANGE_ATR}*ATR ({atr:.2f})")
+        return None, ctx
 
     price = df["close"].iloc[-1]
-    sl, tp = 3.0, 6.0
+    sl_dist = 1.5 * atr
+    tp_dist = 3.0 * atr
 
-    if price > hi:
+    if price > hi and regime_ok(ctx, "BUY"):
         return dict(direction="BUY",  entry_price=round(price, 2),
-                    sl_price=round(price - sl, 2), tp_price=round(price + tp, 2))
-    if price < lo:
+                    sl_price=round(price - sl_dist, 2),
+                    tp_price=round(price + tp_dist, 2),
+                    entry_atr=round(float(atr), 4)), ctx
+    if price < lo and regime_ok(ctx, "SELL"):
         return dict(direction="SELL", entry_price=round(price, 2),
-                    sl_price=round(price + sl, 2), tp_price=round(price - tp, 2))
+                    sl_price=round(price + sl_dist, 2),
+                    tp_price=round(price - tp_dist, 2),
+                    entry_atr=round(float(atr), 4)), ctx
 
-    log.info(f"NYOpen: price {price:.2f} inside range [{lo:.2f}, {hi:.2f}]")
-    return None
+    log.info(
+        f"NYOpen: no setup. price={price:.2f} range=[{lo:.2f},{hi:.2f}] "
+        f"adx={ctx['adx']} slope={ctx['slope']}"
+    )
+    return None, ctx
 
 
 # ---------------------------------------------------------------------------
 # XAUUSD_EmaPullback  (XAU/USD M15)
 # EMA(3/14/24) crossover + 1-3 bar pullback + breakout
-# SL = 2.5 x ATR(14),  TP = 12.0 x ATR(14)
+# SL = 2.5 x ATR(14),  TP = 6.0 x ATR(14)   (~1:2.4 R)
 # Trade window: 07:00-18:00 UTC
 # ---------------------------------------------------------------------------
 
-def check_xauusd(df: pd.DataFrame) -> dict | None:
+def check_xauusd(df: pd.DataFrame) -> tuple[dict | None, dict]:
+    ctx = regime_context(df)
     now = datetime.now(timezone.utc)
     hm = now.hour * 60 + now.minute
     if not (7 * 60 <= hm < 18 * 60):
         log.info("XAUUSD: outside trade window 07:00-18:00 UTC")
-        return None
-
-    if len(df) < 30:
+        return None, ctx
+    if len(df) < 60:
         log.info("XAUUSD: not enough bars")
-        return None
+        return None, ctx
 
     ema_f = df["close"].ewm(span=3,  adjust=False).mean()
     ema_m = df["close"].ewm(span=14, adjust=False).mean()
@@ -192,10 +280,13 @@ def check_xauusd(df: pd.DataFrame) -> dict | None:
             pb_hi = df["high"].iloc[cross_idx + 1: i].max() if cross_idx + 1 < i else None
             if pb_hi is None:
                 continue
-            if df["close"].iloc[i] > pb_hi:
+            if df["close"].iloc[i] > pb_hi and regime_ok(ctx, "BUY"):
                 p, a = df["close"].iloc[i], atr.iloc[i]
-                return dict(direction="BUY", entry_price=round(p, 2),
-                            sl_price=round(p - 2.5 * a, 2), tp_price=round(p + 12.0 * a, 2))
+                return dict(direction="BUY",
+                            entry_price=round(p, 2),
+                            sl_price=round(p - 2.5 * a, 2),
+                            tp_price=round(p + 6.0 * a, 2),
+                            entry_atr=round(float(a), 4)), ctx
 
         # SHORT: fast < mid < slow
         elif ef < em < es:
@@ -221,13 +312,18 @@ def check_xauusd(df: pd.DataFrame) -> dict | None:
             pb_lo = df["low"].iloc[cross_idx + 1: i].min() if cross_idx + 1 < i else None
             if pb_lo is None:
                 continue
-            if df["close"].iloc[i] < pb_lo:
+            if df["close"].iloc[i] < pb_lo and regime_ok(ctx, "SELL"):
                 p, a = df["close"].iloc[i], atr.iloc[i]
-                return dict(direction="SELL", entry_price=round(p, 2),
-                            sl_price=round(p + 2.5 * a, 2), tp_price=round(p - 12.0 * a, 2))
+                return dict(direction="SELL",
+                            entry_price=round(p, 2),
+                            sl_price=round(p + 2.5 * a, 2),
+                            tp_price=round(p - 6.0 * a, 2),
+                            entry_atr=round(float(a), 4)), ctx
 
-    log.info("XAUUSD: no setup found in lookback window")
-    return None
+    log.info(
+        f"XAUUSD: no setup. adx={ctx['adx']} slope={ctx['slope']}"
+    )
+    return None, ctx
 
 
 # ---------------------------------------------------------------------------
@@ -244,10 +340,10 @@ def main() -> int:
     # -- XAUUSD --
     if not already_today(existing, "XAUUSD_EmaPullback"):
         try:
-            df_xau = fetch_ohlcv("XAU/USD", "15min", 100)
-            sig = check_xauusd(df_xau)
+            df_xau = fetch_ohlcv("XAU/USD", "15min", 200)
+            sig, ctx = check_xauusd(df_xau)
             if sig:
-                append_and_save(existing, dict(
+                row = dict(
                     date=now.date().isoformat(),
                     time_utc=now.strftime("%H:%M"),
                     strategy="XAUUSD_EmaPullback",
@@ -256,8 +352,11 @@ def main() -> int:
                     entry_price=sig["entry_price"],
                     sl_price=sig["sl_price"],
                     tp_price=sig["tp_price"],
+                    entry_atr=sig["entry_atr"],
                     status="OPEN", outcome="", notes="",
-                ))
+                )
+                row.update(_ctx_to_row_fields(ctx))
+                append_and_save(existing, row)
                 new_sigs += 1
         except Exception as exc:
             log.error(f"XAUUSD error: {exc}")
@@ -268,10 +367,10 @@ def main() -> int:
     # -- NYOpen_US500 --
     if not already_today(existing, "NYOpen_US500"):
         try:
-            df_spy = fetch_ohlcv("SPY", "30min", 50)
-            sig = check_nyopen(df_spy)
+            df_spy = fetch_ohlcv("SPY", "30min", 200)
+            sig, ctx = check_nyopen(df_spy)
             if sig:
-                append_and_save(existing, dict(
+                row = dict(
                     date=now.date().isoformat(),
                     time_utc=now.strftime("%H:%M"),
                     strategy="NYOpen_US500",
@@ -280,8 +379,11 @@ def main() -> int:
                     entry_price=sig["entry_price"],
                     sl_price=sig["sl_price"],
                     tp_price=sig["tp_price"],
+                    entry_atr=sig["entry_atr"],
                     status="OPEN", outcome="", notes="",
-                ))
+                )
+                row.update(_ctx_to_row_fields(ctx))
+                append_and_save(existing, row)
                 new_sigs += 1
         except Exception as exc:
             log.error(f"NYOpen error: {exc}")

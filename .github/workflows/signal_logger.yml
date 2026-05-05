@@ -39,6 +39,9 @@ jobs:
           TWELVE_DATA_API_KEY: ${{ secrets.TWELVE_DATA_API_KEY }}
         run: python resolve_outcomes.py
 
+      - name: Print metrics
+        run: python metrics.py
+
       - name: Commit if new signals
         run: |
           git config user.name  "Signal Logger Bot"
