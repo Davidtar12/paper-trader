@@ -2,13 +2,13 @@ name: Signal Logger
 
 on:
   schedule:
-    # 5 checks per weekday (UTC) — covers XAUUSD London open + NY open window
-    - cron: "15 7  * * 1-5"   # 07:15 — XAUUSD London open
-    - cron: "0  9  * * 1-5"   # 09:00 — XAUUSD mid-London
-    - cron: "0  11 * * 1-5"   # 11:00 — XAUUSD pre-NY
-    - cron: "35 14 * * 1-5"   # 14:35 — NYOpen (5 min after range closes)
-    - cron: "30 15 * * 1-5"   # 15:30 — NYOpen backup check
-    - cron: "0  21 * * 1-5"   # 21:00 — daily outcome resolver (after NY close)
+    # XAUUSD M15 strategy checks every 30 minutes during the 07:00-18:00 UTC window.
+    - cron: "*/30 7-17 * * 1-5"
+    # Dedicated NYOpen checks, including a 5-minute data-lag buffer after the range closes.
+    - cron: "35 14 * * 1-5"
+    - cron: "30 15 * * 1-5"
+    # Daily outcome resolver after NY close.
+    - cron: "0 21 * * 1-5"
   workflow_dispatch:           # allow manual run from GitHub UI
 
 jobs:

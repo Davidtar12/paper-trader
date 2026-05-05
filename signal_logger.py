@@ -2,7 +2,7 @@
 """
 signal_logger.py -- Paper Trading Signal Logger
 
-Fetches live OHLCV data from Twelve Data and checks two strategies for entry signals.
+Fetches live OHLCV data from Twelve Data and checks paper-trading strategies for entry signals.
 Logs new signals to paper_trades.csv (one entry per strategy per day max).
 
 Strategy variants:
@@ -10,6 +10,7 @@ Strategy variants:
     NYOpen_US500_Raw            -- same NYOpen logic without the regime gate
     XAUUSD_EmaPullback_Filtered -- XAU/USD M15 EMA pullback with regime gate
     XAUUSD_EmaPullback_Raw      -- same XAUUSD logic without the regime gate
+    XAUUSD_EmaPullback_Loose    -- shadow test with 1-5 pullback bars, no regime gate
 
 The filtered variants require:
     - ADX(14) > ADX_THRESHOLD AND ADX rising over the last 3 bars
@@ -20,7 +21,7 @@ import csv
 import logging
 import os
 import sys
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import pandas as pd
@@ -45,13 +46,15 @@ CSV_HEADERS = [
 ]
 
 XAUUSD_VARIANTS = (
-    ("XAUUSD_EmaPullback_Filtered", True),
-    ("XAUUSD_EmaPullback_Raw", False),
+    ("XAUUSD_EmaPullback_Filtered", True, 3),
+    ("XAUUSD_EmaPullback_Raw", False, 3),
+    ("XAUUSD_EmaPullback_Loose", False, 5),
 )
 NYOPEN_VARIANTS = (
     ("NYOpen_US500_Filtered", True),
     ("NYOpen_US500_Raw", False),
 )
+OPEX_STRATEGY = "OptionExpirationWeek_US500"
 
 # ---- Regime filter parameters --------------------------------------------
 ADX_THRESHOLD    = 25.0     # min ADX(14) to call it a trend
@@ -184,6 +187,18 @@ def _ctx_to_row_fields(ctx: dict) -> dict:
     }
 
 
+def _minute_of_day(now: datetime) -> int:
+    return now.hour * 60 + now.minute
+
+
+def is_xauusd_window(now: datetime) -> bool:
+    return 7 * 60 <= _minute_of_day(now) < 18 * 60
+
+
+def is_nyopen_window(now: datetime) -> bool:
+    return 14 * 60 + 30 <= _minute_of_day(now) < 16 * 60
+
+
 def _build_row(
     now: datetime,
     strategy: str,
@@ -223,8 +238,7 @@ def _build_row(
 def check_nyopen(df: pd.DataFrame, require_regime_filter: bool) -> tuple[dict | None, dict]:
     ctx = regime_context(df)
     now = datetime.now(timezone.utc)
-    hm = now.hour * 60 + now.minute
-    if not (14 * 60 + 30 <= hm < 16 * 60):
+    if not is_nyopen_window(now):
         log.info("NYOpen: outside trade window 14:30-16:00 UTC")
         return None, ctx
 
@@ -285,16 +299,19 @@ def check_nyopen(df: pd.DataFrame, require_regime_filter: bool) -> tuple[dict | 
 
 # ---------------------------------------------------------------------------
 # XAUUSD_EmaPullback  (XAU/USD M15)
-# EMA(3/14/24) crossover + 1-3 bar pullback + breakout
+# EMA(3/14/24) crossover + pullback + breakout
 # SL = 2.5 x ATR(14),  TP = 6.0 x ATR(14)   (~1:2.4 R)
 # Trade window: 07:00-18:00 UTC
 # ---------------------------------------------------------------------------
 
-def check_xauusd(df: pd.DataFrame, require_regime_filter: bool) -> tuple[dict | None, dict]:
+def check_xauusd(
+    df: pd.DataFrame,
+    require_regime_filter: bool,
+    pullback_bars: int = 3,
+) -> tuple[dict | None, dict]:
     ctx = regime_context(df)
     now = datetime.now(timezone.utc)
-    hm = now.hour * 60 + now.minute
-    if not (7 * 60 <= hm < 18 * 60):
+    if not is_xauusd_window(now):
         log.info("XAUUSD: outside trade window 07:00-18:00 UTC")
         return None, ctx
     if len(df) < 60:
@@ -305,7 +322,7 @@ def check_xauusd(df: pd.DataFrame, require_regime_filter: bool) -> tuple[dict | 
     ema_m = df["close"].ewm(span=14, adjust=False).mean()
     ema_s = df["close"].ewm(span=24, adjust=False).mean()
     atr   = calc_atr(df, 14)
-    pb_bars = 3
+    pb_bars = pullback_bars
 
     for i in range(len(df) - 1, max(len(df) - pb_bars - 5, 25), -1):
         ef, em, es = ema_f.iloc[i], ema_m.iloc[i], ema_s.iloc[i]
@@ -380,9 +397,54 @@ def check_xauusd(df: pd.DataFrame, require_regime_filter: bool) -> tuple[dict | 
 
     log.info(
         f"XAUUSD: no setup. regime_filter={require_regime_filter} "
+        f"pullback_bars={pullback_bars} "
         f"adx={ctx['adx']} slope={ctx['slope']}"
     )
     return None, ctx
+
+
+# ---------------------------------------------------------------------------
+# OptionExpirationWeek_US500  (SPY)
+# Long SPY on the Monday of the third-Friday week, hold to Friday close.
+# Backtested OOS Sharpe 0.388, Calmar 0.535, MC p95 DD 6.84%.
+# ---------------------------------------------------------------------------
+
+def _third_friday(year: int, month: int) -> datetime.date:
+    first = datetime(year, month, 1).date()
+    days_until_friday = (4 - first.weekday()) % 7
+    return first + timedelta(days=days_until_friday + 14)
+
+
+def is_opex_monday(now: datetime) -> bool:
+    if now.weekday() != 0:  # 0 = Monday
+        return False
+    friday = (now + timedelta(days=4)).date()
+    return friday == _third_friday(friday.year, friday.month)
+
+
+def check_opex_us500(df: pd.DataFrame) -> dict | None:
+    """Trigger on the Monday of OPEX week, after NY open."""
+    now = datetime.now(timezone.utc)
+    if not is_opex_monday(now):
+        log.info("OPEX: today is not Monday of third-Friday week")
+        return None
+    if _minute_of_day(now) < 14 * 60 + 30:
+        log.info("OPEX: before NY open (14:30 UTC), waiting")
+        return None
+
+    if df.empty:
+        return None
+    price = float(df["close"].iloc[-1])
+    # Calendar-exit strategy: SL/TP set far away so the time stop dominates.
+    sl_dist = price * 0.05
+    tp_dist = price * 0.10
+    return dict(
+        direction="BUY",
+        entry_price=round(price, 2),
+        sl_price=round(price - sl_dist, 2),
+        tp_price=round(price + tp_dist, 2),
+        entry_atr=0.0,
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -397,26 +459,35 @@ def main() -> int:
     new_sigs = 0
 
     # -- XAUUSD variants --
-    if any(not already_today(existing, strategy) for strategy, _ in XAUUSD_VARIANTS):
+    xau_pending = any(not already_today(existing, strategy) for strategy, _, _ in XAUUSD_VARIANTS)
+    if xau_pending and is_xauusd_window(now):
         try:
             df_xau = fetch_ohlcv("XAU/USD", "15min", 200)
-            for strategy, require_filter in XAUUSD_VARIANTS:
+            for strategy, require_filter, pullback_bars in XAUUSD_VARIANTS:
                 if already_today(existing, strategy):
                     log.info(f"{strategy}: already signaled today")
                     continue
-                sig, ctx = check_xauusd(df_xau, require_filter)
+                sig, ctx = check_xauusd(df_xau, require_filter, pullback_bars)
                 if sig:
                     row = _build_row(now, strategy, "XAU/USD", sig, ctx, require_filter)
+                    row["notes"] += f";pullback_bars={pullback_bars}"
                     append_and_save(existing, row)
                     new_sigs += 1
         except Exception as exc:
             log.error(f"XAUUSD error: {exc}")
             raise
+    elif xau_pending:
+        log.info("XAUUSD variants: outside trade window 07:00-18:00 UTC")
     else:
         log.info("XAUUSD variants: already signaled today")
 
-    # -- NYOpen_US500 variants --
-    if any(not already_today(existing, strategy) for strategy, _ in NYOPEN_VARIANTS):
+    # -- NYOpen_US500 variants + OptionExpirationWeek (share SPY data) --
+    nyopen_pending = any(not already_today(existing, strategy) for strategy, _ in NYOPEN_VARIANTS)
+    opex_pending = not already_today(existing, OPEX_STRATEGY)
+    spy_needed = (nyopen_pending and is_nyopen_window(now)) or (
+        opex_pending and is_opex_monday(now) and _minute_of_day(now) >= 14 * 60 + 30
+    )
+    if spy_needed:
         try:
             df_spy = fetch_ohlcv("SPY", "30min", 200)
             for strategy, require_filter in NYOPEN_VARIANTS:
@@ -428,11 +499,32 @@ def main() -> int:
                     row = _build_row(now, strategy, "SPY", sig, ctx, require_filter)
                     append_and_save(existing, row)
                     new_sigs += 1
+            if opex_pending:
+                opex_sig = check_opex_us500(df_spy)
+                if opex_sig:
+                    row = dict(
+                        date=now.date().isoformat(),
+                        time_utc=now.strftime("%H:%M"),
+                        strategy=OPEX_STRATEGY,
+                        instrument="SPY",
+                        direction=opex_sig["direction"],
+                        entry_price=opex_sig["entry_price"],
+                        sl_price=opex_sig["sl_price"],
+                        tp_price=opex_sig["tp_price"],
+                        entry_atr=opex_sig["entry_atr"],
+                        status="OPEN",
+                        outcome="",
+                        notes="calendar_exit=friday_close;opex_week=true",
+                    )
+                    append_and_save(existing, row)
+                    new_sigs += 1
         except Exception as exc:
-            log.error(f"NYOpen error: {exc}")
+            log.error(f"SPY block error: {exc}")
             raise
+    elif nyopen_pending or opex_pending:
+        log.info("NYOpen + OPEX: outside active SPY check window")
     else:
-        log.info("NYOpen variants: already signaled today")
+        log.info("NYOpen + OPEX: already signaled today")
 
     log.info(f"Done -- {new_sigs} new signal(s) logged.")
     return 0

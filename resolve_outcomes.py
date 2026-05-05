@@ -46,8 +46,9 @@ INSTRUMENT_INTERVAL = {
 
 # Maximum holding period (in bars) before time stop fires.
 TIME_STOP_BARS = {
-    "NYOpen_US500":       12,   # 12 * 30min = 6h
-    "XAUUSD_EmaPullback": 32,   # 32 * 15min = 8h
+    "NYOpen_US500":             12,   # 12 * 30min = 6h
+    "XAUUSD_EmaPullback":       32,   # 32 * 15min = 8h
+    "OptionExpirationWeek_US500": 64, # ~5 US trading days of SPY 30min bars
 }
 
 
