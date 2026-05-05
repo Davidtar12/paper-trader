@@ -5,20 +5,22 @@ signal_logger.py -- Paper Trading Signal Logger
 Fetches live OHLCV data from Twelve Data and checks two strategies for entry signals.
 Logs new signals to paper_trades.csv (one entry per strategy per day max).
 
-Strategies:
-  NYOpen_US500       -- SPY M30, NY Opening Range Breakout (14:00-14:30 UTC range)
-  XAUUSD_EmaPullback -- XAU/USD M15, EMA(3/14/24) crossover + pullback breakout
+Strategy variants:
+    NYOpen_US500_Filtered       -- SPY M30 opening range breakout with regime gate
+    NYOpen_US500_Raw            -- same NYOpen logic without the regime gate
+    XAUUSD_EmaPullback_Filtered -- XAU/USD M15 EMA pullback with regime gate
+    XAUUSD_EmaPullback_Raw      -- same XAUUSD logic without the regime gate
 
-Both strategies are gated by a regime filter:
-  - ADX(14) > ADX_THRESHOLD AND ADX rising over the last 3 bars
-  - SMA50 slope over 10 bars > +SLOPE_THRESHOLD (BUY) or < -SLOPE_THRESHOLD (SELL)
+The filtered variants require:
+    - ADX(14) > ADX_THRESHOLD AND ADX rising over the last 3 bars
+    - SMA50 slope over 10 bars > +SLOPE_THRESHOLD (BUY) or < -SLOPE_THRESHOLD (SELL)
 """
 
 import csv
 import logging
 import os
 import sys
-from datetime import date, datetime, timezone
+from datetime import datetime, timezone
 from pathlib import Path
 
 import pandas as pd
@@ -41,6 +43,15 @@ CSV_HEADERS = [
     "exit_price", "exit_time_utc", "exit_reason", "r_realized",
     "notes",
 ]
+
+XAUUSD_VARIANTS = (
+    ("XAUUSD_EmaPullback_Filtered", True),
+    ("XAUUSD_EmaPullback_Raw", False),
+)
+NYOPEN_VARIANTS = (
+    ("NYOpen_US500_Filtered", True),
+    ("NYOpen_US500_Raw", False),
+)
 
 # ---- Regime filter parameters --------------------------------------------
 ADX_THRESHOLD    = 25.0     # min ADX(14) to call it a trend
@@ -92,7 +103,7 @@ def load_csv() -> list:
 
 
 def already_today(rows: list, strategy: str) -> bool:
-    today = date.today().isoformat()
+    today = datetime.now(timezone.utc).date().isoformat()
     return any(r["date"] == today and r["strategy"] == strategy for r in rows)
 
 
@@ -173,13 +184,43 @@ def _ctx_to_row_fields(ctx: dict) -> dict:
     }
 
 
+def _build_row(
+    now: datetime,
+    strategy: str,
+    instrument: str,
+    sig: dict,
+    ctx: dict,
+    require_regime_filter: bool,
+) -> dict:
+    regime_passed = regime_ok(ctx, sig["direction"])
+    row = dict(
+        date=now.date().isoformat(),
+        time_utc=now.strftime("%H:%M"),
+        strategy=strategy,
+        instrument=instrument,
+        direction=sig["direction"],
+        entry_price=sig["entry_price"],
+        sl_price=sig["sl_price"],
+        tp_price=sig["tp_price"],
+        entry_atr=sig["entry_atr"],
+        status="OPEN",
+        outcome="",
+        notes=(
+            f"regime_filter={'on' if require_regime_filter else 'off'};"
+            f"regime_passed={str(regime_passed).lower()}"
+        ),
+    )
+    row.update(_ctx_to_row_fields(ctx))
+    return row
+
+
 # ---------------------------------------------------------------------------
 # NYOpen_US500  (SPY M30)
 # Range 14:00-14:30 UTC | Trade 14:30-16:00 UTC
 # Stop = 1.5 * ATR(14)   |   Target = 3.0 * ATR(14)   (~1:2 R)
 # ---------------------------------------------------------------------------
 
-def check_nyopen(df: pd.DataFrame) -> tuple[dict | None, dict]:
+def check_nyopen(df: pd.DataFrame, require_regime_filter: bool) -> tuple[dict | None, dict]:
     ctx = regime_context(df)
     now = datetime.now(timezone.utc)
     hm = now.hour * 60 + now.minute
@@ -211,19 +252,32 @@ def check_nyopen(df: pd.DataFrame) -> tuple[dict | None, dict]:
     sl_dist = 1.5 * atr
     tp_dist = 3.0 * atr
 
-    if price > hi and regime_ok(ctx, "BUY"):
+    if price > hi:
+        if require_regime_filter and not regime_ok(ctx, "BUY"):
+            log.info(
+                f"NYOpen filtered: BUY breakout blocked by regime. "
+                f"adx={ctx['adx']} slope={ctx['slope']}"
+            )
+            return None, ctx
         return dict(direction="BUY",  entry_price=round(price, 2),
                     sl_price=round(price - sl_dist, 2),
                     tp_price=round(price + tp_dist, 2),
                     entry_atr=round(float(atr), 4)), ctx
-    if price < lo and regime_ok(ctx, "SELL"):
+    if price < lo:
+        if require_regime_filter and not regime_ok(ctx, "SELL"):
+            log.info(
+                f"NYOpen filtered: SELL breakout blocked by regime. "
+                f"adx={ctx['adx']} slope={ctx['slope']}"
+            )
+            return None, ctx
         return dict(direction="SELL", entry_price=round(price, 2),
                     sl_price=round(price + sl_dist, 2),
                     tp_price=round(price - tp_dist, 2),
                     entry_atr=round(float(atr), 4)), ctx
 
     log.info(
-        f"NYOpen: no setup. price={price:.2f} range=[{lo:.2f},{hi:.2f}] "
+        f"NYOpen: no setup. regime_filter={require_regime_filter} "
+        f"price={price:.2f} range=[{lo:.2f},{hi:.2f}] "
         f"adx={ctx['adx']} slope={ctx['slope']}"
     )
     return None, ctx
@@ -236,7 +290,7 @@ def check_nyopen(df: pd.DataFrame) -> tuple[dict | None, dict]:
 # Trade window: 07:00-18:00 UTC
 # ---------------------------------------------------------------------------
 
-def check_xauusd(df: pd.DataFrame) -> tuple[dict | None, dict]:
+def check_xauusd(df: pd.DataFrame, require_regime_filter: bool) -> tuple[dict | None, dict]:
     ctx = regime_context(df)
     now = datetime.now(timezone.utc)
     hm = now.hour * 60 + now.minute
@@ -280,7 +334,9 @@ def check_xauusd(df: pd.DataFrame) -> tuple[dict | None, dict]:
             pb_hi = df["high"].iloc[cross_idx + 1: i].max() if cross_idx + 1 < i else None
             if pb_hi is None:
                 continue
-            if df["close"].iloc[i] > pb_hi and regime_ok(ctx, "BUY"):
+            if df["close"].iloc[i] > pb_hi:
+                if require_regime_filter and not regime_ok(ctx, "BUY"):
+                    continue
                 p, a = df["close"].iloc[i], atr.iloc[i]
                 return dict(direction="BUY",
                             entry_price=round(p, 2),
@@ -312,7 +368,9 @@ def check_xauusd(df: pd.DataFrame) -> tuple[dict | None, dict]:
             pb_lo = df["low"].iloc[cross_idx + 1: i].min() if cross_idx + 1 < i else None
             if pb_lo is None:
                 continue
-            if df["close"].iloc[i] < pb_lo and regime_ok(ctx, "SELL"):
+            if df["close"].iloc[i] < pb_lo:
+                if require_regime_filter and not regime_ok(ctx, "SELL"):
+                    continue
                 p, a = df["close"].iloc[i], atr.iloc[i]
                 return dict(direction="SELL",
                             entry_price=round(p, 2),
@@ -321,7 +379,8 @@ def check_xauusd(df: pd.DataFrame) -> tuple[dict | None, dict]:
                             entry_atr=round(float(a), 4)), ctx
 
     log.info(
-        f"XAUUSD: no setup. adx={ctx['adx']} slope={ctx['slope']}"
+        f"XAUUSD: no setup. regime_filter={require_regime_filter} "
+        f"adx={ctx['adx']} slope={ctx['slope']}"
     )
     return None, ctx
 
@@ -337,59 +396,43 @@ def main() -> int:
     existing = load_csv()
     new_sigs = 0
 
-    # -- XAUUSD --
-    if not already_today(existing, "XAUUSD_EmaPullback"):
+    # -- XAUUSD variants --
+    if any(not already_today(existing, strategy) for strategy, _ in XAUUSD_VARIANTS):
         try:
             df_xau = fetch_ohlcv("XAU/USD", "15min", 200)
-            sig, ctx = check_xauusd(df_xau)
-            if sig:
-                row = dict(
-                    date=now.date().isoformat(),
-                    time_utc=now.strftime("%H:%M"),
-                    strategy="XAUUSD_EmaPullback",
-                    instrument="XAU/USD",
-                    direction=sig["direction"],
-                    entry_price=sig["entry_price"],
-                    sl_price=sig["sl_price"],
-                    tp_price=sig["tp_price"],
-                    entry_atr=sig["entry_atr"],
-                    status="OPEN", outcome="", notes="",
-                )
-                row.update(_ctx_to_row_fields(ctx))
-                append_and_save(existing, row)
-                new_sigs += 1
+            for strategy, require_filter in XAUUSD_VARIANTS:
+                if already_today(existing, strategy):
+                    log.info(f"{strategy}: already signaled today")
+                    continue
+                sig, ctx = check_xauusd(df_xau, require_filter)
+                if sig:
+                    row = _build_row(now, strategy, "XAU/USD", sig, ctx, require_filter)
+                    append_and_save(existing, row)
+                    new_sigs += 1
         except Exception as exc:
             log.error(f"XAUUSD error: {exc}")
             raise
     else:
-        log.info("XAUUSD: already signaled today")
+        log.info("XAUUSD variants: already signaled today")
 
-    # -- NYOpen_US500 --
-    if not already_today(existing, "NYOpen_US500"):
+    # -- NYOpen_US500 variants --
+    if any(not already_today(existing, strategy) for strategy, _ in NYOPEN_VARIANTS):
         try:
             df_spy = fetch_ohlcv("SPY", "30min", 200)
-            sig, ctx = check_nyopen(df_spy)
-            if sig:
-                row = dict(
-                    date=now.date().isoformat(),
-                    time_utc=now.strftime("%H:%M"),
-                    strategy="NYOpen_US500",
-                    instrument="SPY",
-                    direction=sig["direction"],
-                    entry_price=sig["entry_price"],
-                    sl_price=sig["sl_price"],
-                    tp_price=sig["tp_price"],
-                    entry_atr=sig["entry_atr"],
-                    status="OPEN", outcome="", notes="",
-                )
-                row.update(_ctx_to_row_fields(ctx))
-                append_and_save(existing, row)
-                new_sigs += 1
+            for strategy, require_filter in NYOPEN_VARIANTS:
+                if already_today(existing, strategy):
+                    log.info(f"{strategy}: already signaled today")
+                    continue
+                sig, ctx = check_nyopen(df_spy, require_filter)
+                if sig:
+                    row = _build_row(now, strategy, "SPY", sig, ctx, require_filter)
+                    append_and_save(existing, row)
+                    new_sigs += 1
         except Exception as exc:
             log.error(f"NYOpen error: {exc}")
             raise
     else:
-        log.info("NYOpen: already signaled today")
+        log.info("NYOpen variants: already signaled today")
 
     log.info(f"Done -- {new_sigs} new signal(s) logged.")
     return 0

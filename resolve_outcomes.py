@@ -51,6 +51,13 @@ TIME_STOP_BARS = {
 }
 
 
+def _base_strategy(strategy: str) -> str:
+    for suffix in ("_Filtered", "_Raw"):
+        if strategy.endswith(suffix):
+            return strategy[: -len(suffix)]
+    return strategy
+
+
 def fetch_ohlcv(symbol: str, interval: str, outputsize: int = 5000) -> pd.DataFrame:
     resp = requests.get(
         "https://api.twelvedata.com/time_series",
@@ -95,7 +102,7 @@ def resolve_trade(row: dict, df: pd.DataFrame) -> dict | None:
     tp     = float(row["tp_price"])
     direction = row["direction"]
     strategy  = row["strategy"]
-    max_bars  = TIME_STOP_BARS.get(strategy, 32)
+    max_bars  = TIME_STOP_BARS.get(_base_strategy(strategy), 32)
 
     bars_after = df[df.index > entry_dt]
     if bars_after.empty:
