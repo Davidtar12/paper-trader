@@ -13,3 +13,5 @@ date,time_utc,strategy,instrument,direction,entry_price,sl_price,tp_price,entry_
 2026-04-30,15:21,NYOpen_US500,SPY,BUY,714.17,711.17,720.17,,,,CLOSED,WIN,720.17,,TP_EST,2.0,legacy_backfill
 2026-05-01,14:56,NYOpen_US500,SPY,SELL,723.0,726.0,717.0,,,,CLOSED,WIN,717.0,,TP_EST,2.0,legacy_backfill
 2026-05-04,15:20,NYOpen_US500,SPY,SELL,719.66,722.66,713.66,,,,CLOSED,LOSS,722.66,,SL_EST,-1.0,legacy_backfill
+2026-05-06,15:26,NYOpen_US500_Filtered,SPY,BUY,732.3,729.88,737.13,1.6115,34.4,0.00405,OPEN,,,,,,regime_filter=on;regime_passed=true
+2026-05-06,15:26,NYOpen_US500_Raw,SPY,BUY,732.3,729.88,737.13,1.6115,34.4,0.00405,OPEN,,,,,,regime_filter=off;regime_passed=true
