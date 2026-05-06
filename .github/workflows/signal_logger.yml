@@ -11,9 +11,15 @@ on:
     - cron: "0 21 * * 1-5"
   workflow_dispatch:           # allow manual run from GitHub UI
 
+# Prevent overlapping scheduled runs from racing on git push.
+concurrency:
+  group: signal-logger
+  cancel-in-progress: false
+
 jobs:
   signal-check:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     permissions:
       contents: write
 
@@ -25,6 +31,7 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: "3.11"
+          cache: pip
 
       - name: Install dependencies
         run: pip install -r requirements.txt
@@ -32,20 +39,46 @@ jobs:
       - name: Run signal logger
         env:
           TWELVE_DATA_API_KEY: ${{ secrets.TWELVE_DATA_API_KEY }}
-        run: python signal_logger.py
+        uses: nick-fields/retry@v3
+        with:
+          timeout_minutes: 5
+          max_attempts: 3
+          retry_wait_seconds: 30
+          command: python signal_logger.py
 
       - name: Resolve open trade outcomes
         env:
           TWELVE_DATA_API_KEY: ${{ secrets.TWELVE_DATA_API_KEY }}
-        run: python resolve_outcomes.py
+        uses: nick-fields/retry@v3
+        with:
+          timeout_minutes: 5
+          max_attempts: 3
+          retry_wait_seconds: 30
+          command: python resolve_outcomes.py
 
       - name: Print metrics
         run: python metrics.py
 
       - name: Commit if new signals
         run: |
+          set -e
           git config user.name  "Signal Logger Bot"
           git config user.email "bot@github.com"
           git add paper_trades.csv
-          git diff --cached --quiet || git commit -m "signals: $(date -u '+%Y-%m-%d %H:%M UTC')"
-          git push
+          if git diff --cached --quiet; then
+            echo "No new signals to commit."
+            exit 0
+          fi
+          git commit -m "signals: $(date -u '+%Y-%m-%d %H:%M UTC')"
+          # Retry push with rebase to survive races with concurrent bot commits.
+          for attempt in 1 2 3 4 5; do
+            if git push; then
+              echo "Push succeeded on attempt $attempt."
+              exit 0
+            fi
+            echo "Push failed on attempt $attempt; rebasing and retrying..."
+            git pull --rebase --autostash origin "${GITHUB_REF_NAME}"
+            sleep $((attempt * 5))
+          done
+          echo "Push failed after 5 attempts." >&2
+          exit 1
