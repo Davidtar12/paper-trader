@@ -473,8 +473,10 @@ def main() -> int:
                     row["notes"] += f";pullback_bars={pullback_bars}"
                     append_and_save(existing, row)
                     new_sigs += 1
+        except (ValueError, requests.exceptions.RequestException) as exc:
+            log.warning(f"XAUUSD skipped — transient API error (slot will be missed): {exc}")
         except Exception as exc:
-            log.error(f"XAUUSD error: {exc}")
+            log.error(f"XAUUSD unexpected error: {exc}")
             raise
     elif xau_pending:
         log.info("XAUUSD variants: outside trade window 07:00-18:00 UTC")
@@ -518,8 +520,10 @@ def main() -> int:
                     )
                     append_and_save(existing, row)
                     new_sigs += 1
+        except (ValueError, requests.exceptions.RequestException) as exc:
+            log.warning(f"SPY skipped — transient API error (slot will be missed): {exc}")
         except Exception as exc:
-            log.error(f"SPY block error: {exc}")
+            log.error(f"SPY unexpected error: {exc}")
             raise
     elif nyopen_pending or opex_pending:
         log.info("NYOpen + OPEX: outside active SPY check window")

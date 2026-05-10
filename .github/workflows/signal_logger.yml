@@ -22,6 +22,8 @@ jobs:
     timeout-minutes: 10
     permissions:
       contents: write
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
     steps:
       - name: Checkout
@@ -39,22 +41,20 @@ jobs:
       - name: Run signal logger
         env:
           TWELVE_DATA_API_KEY: ${{ secrets.TWELVE_DATA_API_KEY }}
-        uses: nick-fields/retry@v3
-        with:
-          timeout_minutes: 5
-          max_attempts: 3
-          retry_wait_seconds: 30
-          command: python signal_logger.py
+        run: |
+          for attempt in 1 2 3; do
+            python signal_logger.py && break
+            [ $attempt -lt 3 ] && echo "Attempt $attempt failed, retrying in 30s..." && sleep 30
+          done
 
       - name: Resolve open trade outcomes
         env:
           TWELVE_DATA_API_KEY: ${{ secrets.TWELVE_DATA_API_KEY }}
-        uses: nick-fields/retry@v3
-        with:
-          timeout_minutes: 5
-          max_attempts: 3
-          retry_wait_seconds: 30
-          command: python resolve_outcomes.py
+        run: |
+          for attempt in 1 2 3; do
+            python resolve_outcomes.py && break
+            [ $attempt -lt 3 ] && echo "Attempt $attempt failed, retrying in 30s..." && sleep 30
+          done
 
       - name: Print metrics
         run: python metrics.py
