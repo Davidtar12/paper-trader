@@ -43,8 +43,16 @@ jobs:
           TWELVE_DATA_API_KEY: ${{ secrets.TWELVE_DATA_API_KEY }}
         run: |
           for attempt in 1 2 3; do
-            python signal_logger.py && break
-            [ $attempt -lt 3 ] && echo "Attempt $attempt failed, retrying in 30s..." && sleep 30
+            if python signal_logger.py; then
+              break
+            fi
+            if [ "$attempt" -lt 3 ]; then
+              echo "Attempt $attempt failed, retrying in 30s..."
+              sleep 30
+            else
+              echo "signal_logger.py failed after $attempt attempts." >&2
+              exit 1
+            fi
           done
 
       - name: Resolve open trade outcomes
@@ -52,8 +60,16 @@ jobs:
           TWELVE_DATA_API_KEY: ${{ secrets.TWELVE_DATA_API_KEY }}
         run: |
           for attempt in 1 2 3; do
-            python resolve_outcomes.py && break
-            [ $attempt -lt 3 ] && echo "Attempt $attempt failed, retrying in 30s..." && sleep 30
+            if python resolve_outcomes.py; then
+              break
+            fi
+            if [ "$attempt" -lt 3 ]; then
+              echo "Attempt $attempt failed, retrying in 30s..."
+              sleep 30
+            else
+              echo "resolve_outcomes.py failed after $attempt attempts." >&2
+              exit 1
+            fi
           done
 
       - name: Print metrics

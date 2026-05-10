@@ -45,6 +45,10 @@ CSV_HEADERS = [
     "notes",
 ]
 
+
+class TransientMarketDataError(RuntimeError):
+    pass
+
 XAUUSD_VARIANTS = (
     ("XAUUSD_EmaPullback_Filtered", True, 3),
     ("XAUUSD_EmaPullback_Raw", False, 3),
@@ -79,12 +83,17 @@ def fetch_ohlcv(symbol: str, interval: str, outputsize: int = 100) -> pd.DataFra
         timeout=20,
     )
     resp.raise_for_status()
-    data = resp.json()
+    try:
+        data = resp.json()
+    except ValueError as exc:
+        raise TransientMarketDataError(
+            f"Twelve Data [{symbol}]: invalid JSON response"
+        ) from exc
     if data.get("status") == "error":
-        raise ValueError(f"Twelve Data [{symbol}]: {data.get('message')}")
+        raise TransientMarketDataError(f"Twelve Data [{symbol}]: {data.get('message')}")
     values = data.get("values", [])
     if not values:
-        raise ValueError(f"No bars returned for {symbol}")
+        raise TransientMarketDataError(f"No bars returned for {symbol}")
     df = pd.DataFrame(values)
     df["datetime"] = pd.to_datetime(df["datetime"])
     df = df.set_index("datetime").sort_index()
@@ -473,7 +482,7 @@ def main() -> int:
                     row["notes"] += f";pullback_bars={pullback_bars}"
                     append_and_save(existing, row)
                     new_sigs += 1
-        except (ValueError, requests.exceptions.RequestException) as exc:
+        except (TransientMarketDataError, requests.exceptions.RequestException) as exc:
             log.warning(f"XAUUSD skipped — transient API error (slot will be missed): {exc}")
         except Exception as exc:
             log.error(f"XAUUSD unexpected error: {exc}")
@@ -520,7 +529,7 @@ def main() -> int:
                     )
                     append_and_save(existing, row)
                     new_sigs += 1
-        except (ValueError, requests.exceptions.RequestException) as exc:
+        except (TransientMarketDataError, requests.exceptions.RequestException) as exc:
             log.warning(f"SPY skipped — transient API error (slot will be missed): {exc}")
         except Exception as exc:
             log.error(f"SPY unexpected error: {exc}")
