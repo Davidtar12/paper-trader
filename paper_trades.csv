@@ -21,3 +21,4 @@ date,time_utc,strategy,instrument,direction,entry_price,sl_price,tp_price,entry_
 2026-05-11,15:01,NYOpen_US500_Raw,SPY,BUY,739.64,737.32,744.27,1.5444,32.12,0.00472,CLOSED,LOSS,737.32,2026-05-12 13:30,SL,-1.0,regime_filter=off;regime_passed=true
 2026-05-11,15:01,OptionExpirationWeek_US500,SPY,BUY,739.64,702.66,813.6,0.0,,,OPEN,,,,,,calendar_exit=friday_close;opex_week=true
 2026-05-12,14:53,NYOpen_US500_Raw,SPY,SELL,734.11,736.42,729.48,1.5424,26.51,0.00281,CLOSED,LOSS,736.42,2026-05-12 18:00,SL,-1.0,regime_filter=off;regime_passed=false
+2026-05-13,15:31,NYOpen_US500_Raw,SPY,BUY,739.11,736.87,743.6,1.4951,19.36,0.00097,OPEN,,,,,,regime_filter=off;regime_passed=false
