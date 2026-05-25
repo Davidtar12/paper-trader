@@ -29,6 +29,7 @@ Scheduled paper-trading bot that runs through GitHub Actions, fetches market dat
 
 ## Recent Important Fixes
 
+- `1a567eb`: `calc_adx()` — replaced `pd.NA` with `float("nan")` in denom; `pd.NA` coerced dtype to object and crashed `ewm()` whenever any bar had `plus_di + minus_di == 0`, causing all XAUUSD strategies to fail on every run
 - `a3e61ba`: replaced `nick-fields/retry@v3` with explicit shell retry loops in the workflow
 - `043cab8`: tightened retry semantics and split transient vendor failures from unexpected internal errors
 - `34abbc9`: added the initial repo handoff documentation file
@@ -77,11 +78,13 @@ The repo-level Copilot instructions file should point agents here at session sta
 
 If you want runtime behavior to depend on this file, that must be implemented explicitly.
 
-## Current Status As Of 2026-05-10
+## Current Status As Of 2026-05-25
 
+- `calc_adx()` bug fixed — XAUUSD strategies were silently failing every run since launch; first real XAUUSD signals expected from next scheduled run
+- NYOpen strategies have ~7-8 trades each (too few to judge): both Filtered and Raw are slightly negative, but statistically meaningless at this sample size
+- OptionExpirationWeek had 1 trade: near-flat loss (−0.03R)
 - Workflow retry behavior is hardened against the Node.js 20 deprecation path
-- Transient market-data failures should skip a slot cleanly instead of producing false-red workflow runs
-- Runtime behavior was changed only in the workflow and error-boundary handling, not in strategy logic
+- Transient market-data failures skip a slot cleanly instead of producing false-red runs
 *** Add File: c:\dscodingpython\01_Finance\paper_trader\.github\copilot-instructions.md
 # paper_trader — Coding Agent Instructions
 
