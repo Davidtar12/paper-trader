@@ -156,7 +156,7 @@ def calc_adx(df: pd.DataFrame, period: int = 14) -> pd.Series:
     atr_w = tr.ewm(alpha=1 / period, adjust=False).mean()
     plus_di  = 100 * plus_dm.ewm(alpha=1 / period, adjust=False).mean() / atr_w
     minus_di = 100 * minus_dm.ewm(alpha=1 / period, adjust=False).mean() / atr_w
-    denom = (plus_di + minus_di).replace(0, pd.NA)
+    denom = (plus_di + minus_di).replace(0, float("nan"))
     dx = 100 * (plus_di - minus_di).abs() / denom
     return dx.ewm(alpha=1 / period, adjust=False).mean()
 
