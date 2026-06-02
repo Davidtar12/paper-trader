@@ -30,3 +30,4 @@ date,time_utc,strategy,instrument,direction,entry_price,sl_price,tp_price,entry_
 2026-05-27,15:45,NYOpen_US500_Raw,SPY,SELL,748.66,751.0,743.97,1.5628,26.85,0.00329,CLOSED,LOSS,751.0,2026-05-27 18:30,SL,-1.0,regime_filter=off;regime_passed=false
 2026-05-28,15:45,NYOpen_US500_Filtered,SPY,BUY,754.04,751.91,758.31,1.4219,25.13,0.00324,CLOSED,WIN,756.78,2026-05-29 15:00,TIME,1.2864,regime_filter=on;regime_passed=true
 2026-05-28,15:45,NYOpen_US500_Raw,SPY,BUY,754.04,751.91,758.31,1.4219,25.13,0.00324,CLOSED,WIN,756.78,2026-05-29 15:00,TIME,1.2864,regime_filter=off;regime_passed=true
+2026-06-02,15:19,NYOpen_US500_Raw,SPY,BUY,760.04,758.08,763.96,1.308,28.45,0.00248,OPEN,,,,,,regime_filter=off;regime_passed=false
