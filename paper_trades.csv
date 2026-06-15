@@ -39,7 +39,8 @@ date,time_utc,strategy,instrument,direction,entry_price,sl_price,tp_price,entry_
 2026-06-10,15:44,NYOpen_US500_Raw,SPY,SELL,731.77,737.76,719.8,3.9904,31.65,-0.00551,CLOSED,WIN,725.59,2026-06-11 15:00,TIME,1.0317,regime_filter=off;regime_passed=false
 2026-06-10,15:55,NYOpen_US500_Filtered,SPY,SELL,730.79,736.99,718.4,4.13,31.83,-0.00553,CLOSED,WIN,725.59,2026-06-11 15:00,TIME,0.8387,regime_filter=on;regime_passed=true
 2026-06-11,15:07,NYOpen_US500_Raw,SPY,SELL,725.59,731.11,714.55,3.6804,33.53,-0.00647,CLOSED,LOSS,731.11,2026-06-11 17:00,SL,-1.0,regime_filter=off;regime_passed=false
-2026-06-12,15:37,NYOpen_US500_Raw,SPY,BUY,742.58,736.96,753.81,3.7446,24.64,-0.00074,OPEN,,,,,,regime_filter=off;regime_passed=false
+2026-06-12,15:37,NYOpen_US500_Raw,SPY,BUY,742.58,736.96,753.81,3.7446,24.64,-0.00074,CLOSED,WIN,753.81,2026-06-15 13:30,TP,1.9982,regime_filter=off;regime_passed=false
 2026-06-15,09:02,XAUUSD_EmaPullback_Filtered,XAU/USD,BUY,4342.85,4322.12,4392.59,8.2909,35.91,0.00514,OPEN,,,,,,regime_filter=on;regime_passed=true;pullback_bars=3
 2026-06-15,09:02,XAUUSD_EmaPullback_Raw,XAU/USD,BUY,4342.85,4322.12,4392.59,8.2909,35.91,0.00514,OPEN,,,,,,regime_filter=off;regime_passed=true;pullback_bars=3
 2026-06-15,09:02,XAUUSD_EmaPullback_Loose,XAU/USD,BUY,4342.85,4322.12,4392.59,8.2909,35.91,0.00514,OPEN,,,,,,regime_filter=off;regime_passed=true;pullback_bars=5
+2026-06-15,15:56,OptionExpirationWeek_US500,SPY,BUY,756.0,718.2,831.6,0.0,,,OPEN,,,,,,calendar_exit=friday_close;opex_week=true
