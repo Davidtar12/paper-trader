@@ -44,3 +44,4 @@ date,time_utc,strategy,instrument,direction,entry_price,sl_price,tp_price,entry_
 2026-06-15,09:02,XAUUSD_EmaPullback_Raw,XAU/USD,BUY,4342.85,4322.12,4392.59,8.2909,35.91,0.00514,CLOSED,LOSS,4331.4509,2026-06-15 17:00,TIME,-0.5499,regime_filter=off;regime_passed=true;pullback_bars=3
 2026-06-15,09:02,XAUUSD_EmaPullback_Loose,XAU/USD,BUY,4342.85,4322.12,4392.59,8.2909,35.91,0.00514,CLOSED,LOSS,4331.4509,2026-06-15 17:00,TIME,-0.5499,regime_filter=off;regime_passed=true;pullback_bars=5
 2026-06-15,15:56,OptionExpirationWeek_US500,SPY,BUY,756.0,718.2,831.6,0.0,,,OPEN,,,,,,calendar_exit=friday_close;opex_week=true
+2026-06-16,14:35,NYOpen_US500_Raw,SPY,SELL,752.55,755.64,746.37,2.0584,33.03,0.00544,OPEN,,,,,,regime_filter=off;regime_passed=false
