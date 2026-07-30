@@ -63,3 +63,4 @@ date,time_utc,strategy,instrument,direction,entry_price,sl_price,tp_price,entry_
 2026-07-15,16:50,XAUUSD_EmaPullback_Loose,XAU/USD,SELL,4028.31,4048.83,3979.04,8.2114,27.81,0.0005,CLOSED,LOSS,4048.83,2026-07-15 17:30,SL,-1.0,regime_filter=off;regime_passed=false;pullback_bars=5
 2026-07-23,15:00,NYOpen_US500_Raw,SPY,SELL,738.32,741.03,732.89,1.8089,22.31,-0.00063,CLOSED,WIN,738.15,2026-07-24 14:30,TIME,0.0627,regime_filter=off;regime_passed=false
 2026-07-28,15:41,NYOpen_US500_Raw,SPY,BUY,741.65,738.31,748.34,2.2297,14.28,-0.00267,CLOSED,LOSS,738.31,2026-07-29 13:30,SL,-1.0,regime_filter=off;regime_passed=false
+2026-07-30,15:28,NYOpen_US500_Raw,SPY,SELL,735.08,740.11,725.0,3.3571,16.57,-0.00085,OPEN,,,,,,regime_filter=off;regime_passed=false
