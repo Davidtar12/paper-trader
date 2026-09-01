@@ -80,3 +80,4 @@ date,time_utc,strategy,instrument,direction,entry_price,sl_price,tp_price,entry_
 2026-08-25,14:44,NYOpen_US500_Raw,SPY,SELL,764.3,766.35,760.19,1.3695,15.91,-0.00134,CLOSED,LOSS,766.35,2026-08-26 13:30,SL,-1.0,regime_filter=off;regime_passed=false
 2026-08-28,14:32,XAUUSD_EmaPullback_Raw,XAU/USD,BUY,4625.77,4603.9,4678.25,8.747,23.54,-0.00012,CLOSED,LOSS,4603.9,2026-08-28 14:45,SL,-1.0,regime_filter=off;regime_passed=false;pullback_bars=3
 2026-08-28,14:32,XAUUSD_EmaPullback_Loose,XAU/USD,BUY,4625.77,4603.9,4678.25,8.747,23.54,-0.00012,CLOSED,LOSS,4603.9,2026-08-28 14:45,SL,-1.0,regime_filter=off;regime_passed=false;pullback_bars=5
+2026-09-01,14:34,NYOpen_US500_Raw,SPY,BUY,764.32,761.81,769.35,1.6758,31.42,-6e-05,OPEN,,,,,,regime_filter=off;regime_passed=false
