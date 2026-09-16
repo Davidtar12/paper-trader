@@ -89,3 +89,4 @@ date,time_utc,strategy,instrument,direction,entry_price,sl_price,tp_price,entry_
 2026-09-11,14:42,NYOpen_US500_Raw,SPY,SELL,764.48,767.29,758.85,1.8756,46.68,-0.00303,CLOSED,WIN,758.85,2026-09-14 13:30,TP,2.0036,regime_filter=off;regime_passed=false
 2026-09-14,14:35,OptionExpirationWeek_US500,SPY,BUY,759.1,721.14,835.01,0.0,,,OPEN,,,,,,calendar_exit=friday_close;opex_week=true
 2026-09-15,14:42,NYOpen_US500_Raw,SPY,SELL,757.04,759.3,752.52,1.5067,20.98,-0.0011,CLOSED,LOSS,759.3,2026-09-16 13:30,SL,-1.0,regime_filter=off;regime_passed=false
+2026-09-16,15:02,NYOpen_US500_Raw,SPY,BUY,760.44,758.49,764.33,1.297,22.83,-0.00048,OPEN,,,,,,regime_filter=off;regime_passed=false
