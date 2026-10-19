@@ -105,7 +105,7 @@ date,time_utc,strategy,instrument,direction,entry_price,sl_price,tp_price,entry_
 2026-10-07,14:46,NYOpen_US500_Raw,SPY,SELL,773.92,776.03,769.72,1.401,34.82,0.00382,CLOSED,LOSS,776.03,2026-10-07 15:30,SL,-1.0,regime_filter=off;regime_passed=false
 2026-10-08,15:38,NYOpen_US500_Raw,SPY,SELL,774.42,776.44,770.4,1.3429,18.01,0.00206,CLOSED,LOSS,776.44,2026-10-08 16:00,SL,-1.0,regime_filter=off;regime_passed=false
 2026-10-09,15:02,NYOpen_US500_Raw,SPY,BUY,777.14,774.74,781.94,1.6002,16.56,0.00078,CLOSED,WIN,777.76,2026-10-12 14:30,TIME,0.2583,regime_filter=off;regime_passed=false
-2026-10-12,14:45,OptionExpirationWeek_US500,SPY,BUY,777.76,738.87,855.54,0.0,,,OPEN,,,,,,calendar_exit=friday_close;opex_week=true
+2026-10-12,14:45,OptionExpirationWeek_US500,SPY,BUY,777.76,738.87,855.54,0.0,,,CLOSED,LOSS,766.565,2026-10-19 14:00,TIME,-0.2879,calendar_exit=friday_close;opex_week=true
 2026-10-13,15:04,NYOpen_US500_Raw,SPY,SELL,777.11,778.5,774.33,0.9267,22.9,0.00013,CLOSED,LOSS,778.5,2026-10-13 19:00,SL,-1.0,regime_filter=off;regime_passed=false
 2026-10-14,15:03,NYOpen_US500_Raw,SPY,SELL,772.01,773.81,768.41,1.1994,25.23,-0.00011,CLOSED,WIN,768.41,2026-10-14 17:00,TP,2.0,regime_filter=off;regime_passed=false
 2026-10-15,14:43,NYOpen_US500_Raw,SPY,BUY,769.03,766.35,774.39,1.7872,43.13,-0.00174,CLOSED,WIN,772.0,2026-10-16 14:00,TIME,1.1082,regime_filter=off;regime_passed=false
